@@ -10735,8 +10735,9 @@ _sb.auth.onAuthStateChange(async (event, session) => {
     closeAuthModal();
     updateSyncIndicator('local');
     await loadSbProfile();
-    // Block access if role is null (pending approval)
-    if (!_sbProfile || _sbProfile.role === null) {
+    // Block ONLY if profile loaded AND role is explicitly null
+    // If profile failed to load (Supabase timeout), let user in
+    if (_sbProfile && _sbProfile.role === null) {
       const errEl = document.getElementById('loginError');
       if (errEl) {
         errEl.style.background = '#fff8e1';
@@ -10772,7 +10773,7 @@ _sb.auth.onAuthStateChange(async (event, session) => {
     updateAuthUI();
     updateSyncIndicator('local');
     await loadSbProfile();
-    if (!_sbProfile || _sbProfile.role === null) {
+    if (_sbProfile && _sbProfile.role === null) {
       await _sb.auth.signOut();
       showLoginScreen();
       return;

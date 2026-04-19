@@ -10,7 +10,13 @@
 <script>
 const _SB_URL = 'https://jogylulfstjsznduirub.supabase.co';
 const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvZ3lsdWxmc3Rqc3puZHVpcnViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDQ0NjEsImV4cCI6MjA5MTY4MDQ2MX0.cGkTkrM09ZxV3LH5wwy19ITloykao472WgppimoWiUQ';
-const _sb = supabase.createClient(_SB_URL, _SB_KEY);
+const _sb = supabase.createClient(_SB_URL, _SB_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+  }
+});
 let _sbUser = null;
 </script>
 <style>
@@ -2104,6 +2110,15 @@ body.dark #presetBox { background: var(--card-bg); }
         <div style="margin-top:16px;text-align:center;">
           <button onclick="loginForgot()" style="background:none;border:none;cursor:pointer;font-size:0.72rem;color:var(--gray-light);font-family:'Geologica',sans-serif;text-decoration:underline;">
             Забыли пароль?
+          </button>
+        </div>
+        <div id="devBypassWrap" style="display:none;margin-top:14px;border-top:1px solid var(--green-bg);padding-top:14px;">
+          <div style="font-size:0.65rem;color:var(--gray-light);text-align:center;margin-bottom:8px;letter-spacing:0.04em;">РЕЖИМ ТЕСТИРОВАНИЯ</div>
+          <input id="devPassInput" type="password" placeholder="Код доступа" autocomplete="off"
+            style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--field-bg);color:var(--black);font-size:0.82rem;font-family:'Geologica',sans-serif;box-sizing:border-box;outline:none;margin-bottom:8px;"
+            onkeydown="if(event.key==='Enter')devBypassLogin()">
+          <button onclick="devBypassLogin()" style="width:100%;padding:9px;background:none;border:1.5px solid var(--green-dark);border-radius:8px;font-family:'Geologica',sans-serif;font-size:0.72rem;font-weight:600;color:var(--green-dark);cursor:pointer;">
+            Войти без сети
           </button>
         </div>
       </div>
@@ -10494,8 +10509,10 @@ async function sbSyncPresets() {
     updateSyncIndicator('synced');
     showToast('Пресеты синхронизированы ✓');
   } catch(e) {
-    console.warn('Supabase sync failed:', e);
-    showToast('Ошибка синхронизации');
+    const msg = e?.message || String(e);
+    console.error('[Sync error]', msg, e);
+    showToast('Ошибка синхронизации: ' + msg.slice(0,60));
+    updateSyncIndicator('local');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -10533,10 +10550,11 @@ _sb.auth.onAuthStateChange(async (event, session) => {
 });
 
 (async () => {
-  showLoginScreen();
-  const { data: { session } } = await _sb.auth.getSession();
+  const { data: { session }, error: gsErr } = await _sb.auth.getSession();
+  if (gsErr) console.error('[getSession error]', gsErr.message);
   if (session) {
     _sbUser = session.user;
+    console.log('[Session restored]', session.user.email);
     updateAuthUI();
     updateSyncIndicator('local');
     await loadSbProfile();
@@ -10544,6 +10562,8 @@ _sb.auth.onAuthStateChange(async (event, session) => {
     startSyncTimer();
     hideLoginScreen();
   }
+  // DEV: showLoginScreen() отключён — включить перед релизом
+  // else { showLoginScreen(); }
 })();
 
 
@@ -11720,9 +11740,34 @@ async function loginSubmit() {
   btn.disabled = false;
   btn.textContent = 'ВОЙТИ';
   if (error) {
-    errEl.textContent = error.message === 'Invalid login credentials' ? 'Неверный email или пароль' : error.message;
+    let msg = error.message;
+    if (msg === 'Invalid login credentials') msg = 'Неверный email или пароль';
+    else if (msg === 'Load failed' || msg.includes('fetch') || msg.includes('network') || msg.includes('Failed to fetch')) {
+      msg = 'Нет соединения — сервер недоступен.';
+      showDevBypass();
+    }
+    else if (msg.includes('Email not confirmed')) msg = 'Email не подтверждён. Проверьте почту.';
+    errEl.textContent = msg;
     errEl.style.display = 'block';
   }
+}
+
+
+function devBypassLogin() {
+  const code = document.getElementById('devPassInput')?.value || '';
+  if (code === 'baniamsk') {
+    hideLoginScreen();
+    showToast('Тестовый режим — данные не синхронизируются');
+  } else {
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = 'Неверный код доступа';
+    errEl.style.display = 'block';
+  }
+}
+
+function showDevBypass() {
+  const wrap = document.getElementById('devBypassWrap');
+  if (wrap) wrap.style.display = 'block';
 }
 
 async function loginForgot() {

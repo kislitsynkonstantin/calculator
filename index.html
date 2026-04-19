@@ -9970,8 +9970,10 @@ async function openStats() {
       } catch(e) {}
     };
     doSend();
-    setTimeout(doSend, 300);
-    setTimeout(doSend, 800);
+    setTimeout(doSend, 200);
+    setTimeout(doSend, 600);
+    setTimeout(doSend, 1200);
+    setTimeout(doSend, 2000);
   };
 
   // Step 1: load iframe with local data immediately (orange indicator)
@@ -10006,7 +10008,9 @@ async function openStats() {
     frame.srcdoc = decodeURIComponent(escape(atob(b64)));
   } else {
     // iframe already loaded — send local immediately, then Supabase
-    setTimeout(() => sendToFrame(localEvents, localSource), 100);
+    sendToFrame(localEvents, localSource);
+    setTimeout(() => sendToFrame(localEvents, localSource), 300);
+    setTimeout(() => sendToFrame(localEvents, localSource), 800);
     if (_sbUser && _sb) {
       (async () => {
         try {

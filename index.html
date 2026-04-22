@@ -1809,6 +1809,17 @@ body.dark .ptoolbar-btn { background: rgba(255,255,255,0.07); border-color: rgba
 body.dark .ptoolbar-btn:hover { background: rgba(255,255,255,0.13); color: #fff; border-color: rgba(255,255,255,0.25); }
 body.dark .ptoolbar-primary { background: var(--green-mid); border-color: var(--green-mid); color: #fff; }
 body.dark .ptoolbar-primary:hover { background: var(--green-dark); }
+body.dark .shared-pcard { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
+body.dark .shared-pcard:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+body.dark .shared-pcard-name { color: #e8f4f5; }
+body.dark .shared-pcard-project { color: var(--gray-light); }
+body.dark .shared-pcard-price { color: var(--green-pale); }
+body.dark .shared-author-name { color: var(--gray-light); }
+body.dark .shared-author-date { color: rgba(154,181,184,0.7); }
+body.dark .shared-author-av { background: rgba(42,143,151,0.3); color: var(--green-pale); }
+body.dark .psection-label { color: rgba(154,181,184,0.7); }
+body.dark .psection-starred { color: rgba(176,120,0,0.9); }
+body.dark .btn-shared-act { background: rgba(255,255,255,0.07) !important; border-color: rgba(255,255,255,0.12) !important; color: rgba(200,232,234,0.85) !important; }
 body.dark .pcard-act { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.12); color: rgba(200,232,234,0.85); }
 body.dark .pcard-act:hover { background: rgba(255,255,255,0.15); color: #fff; }
 body.dark .pcard-publish { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.12); color: rgba(200,232,234,0.85); }
@@ -10998,10 +11009,11 @@ async function adminRemoveShared(sharedId) {
 // ── Use (load) a shared preset ──
 function useSharedPreset(sharedId) {
   const sp = _sharedPresets.find(p => p.id === sharedId);
-  if (!sp) return;
-  applyState(sp.state);
-  showToast('Пресет загружен ✓');
-  closePresetPanel();
+  if (!sp) { showToast('Пресет не найден'); return; }
+  // state may be string (from Supabase) or object — normalise
+  const state = typeof sp.state === 'string' ? JSON.parse(sp.state) : sp.state;
+  restoreState(state);
+  showToast('Пресет загружен: ' + sp.name);
 }
 
 // ── Download a shared preset as JSON ──

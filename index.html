@@ -9856,6 +9856,41 @@ function openPresetPanel() {
   panel.style.paddingTop = top + 'px';
   panel.style.alignItems = 'flex-start';
   panel.classList.add('open');
+  // Background: patch missing totalNum for old presets (one-time, no UI flicker)
+  patchMissingTotals();
+}
+
+// ── Patch totalNum for presets saved before totalDisplay was populated ──
+let _patchTotalsDone = false;
+async function patchMissingTotals() {
+  if (_patchTotalsDone) return;
+  _patchTotalsDone = true;
+  const presets = loadAllPresets();
+  const broken = Object.values(presets).filter(p => !p.state?.totalNum && p.state?.version === 1);
+  if (!broken.length) return;
+  // Save current UI state to restore after patching
+  const saved_state = collectState();
+  let patched = 0;
+  for (const p of broken) {
+    try {
+      restoreState(p.state);
+      await new Promise(r => setTimeout(r, 120));
+      const el = document.getElementById('totalDisplay');
+      const num = el ? (parseInt(el.textContent.replace(/[^\d]/g,''), 10) || 0) : 0;
+      if (num > 0) {
+        p.state.totalNum = num;
+        p.state.total = el.textContent;
+        presets[p.id] = p;
+        patched++;
+      }
+    } catch(e) {}
+  }
+  if (patched > 0) {
+    saveAllPresets(presets);
+    renderPresetList();
+  }
+  // Restore original state
+  try { restoreState(saved_state); } catch(e) {}
 }
 function closePresetPanel() {
   document.getElementById('presetPanel').classList.remove('open');
@@ -11041,6 +11076,8 @@ async function logEvent(eventType) {
 }
 
 function savePreset() {
+  // Force recalc to ensure totalNum/total are up-to-date before collecting state
+  if (typeof calc === 'function') calc();
   const state = collectState();
   const proj = state.project ? state.project.name : 'Без проекта';
   const client = state.client || '';
@@ -11341,10 +11378,57 @@ function makeCard(p) {
   </div>`;
 }
 
+// ── Background patch: restore missing totalNum by silently recalculating ──
+let _patchingTotals = false;
+function patchMissingTotals(presets) {
+  if (_patchingTotals) return;
+  if (!presets || typeof presets !== 'object') return;
+  const missing = Object.values(presets).filter(p => p?.state?.version === 1 && !p.state?.totalNum);
+  if (!missing.length) return;
+  _patchingTotals = true;
+  let savedState;
+  try { savedState = captureState(); } catch(e) { _patchingTotals = false; return; }
+  let idx = 0;
+  function patchNext() {
+    if (idx >= missing.length) {
+      // Restore original state
+      restoreState(savedState);
+      _patchingTotals = false;
+      renderPresetList();
+      return;
+    }
+    const p = missing[idx++];
+    try {
+      restoreState(p.state);
+      // Wait for calc() to run (triggered by restoreState)
+      setTimeout(() => {
+        const el = document.getElementById('totalDisplay');
+        if (el) {
+          const num = parseInt(el.textContent.replace(/[^\d]/g,''), 10) || 0;
+          if (num > 0) {
+            const allP = loadAllPresets();
+            if (allP[p.id]) {
+              allP[p.id].state.totalNum = num;
+              allP[p.id].state.total = el.textContent;
+              saveAllPresets(allP);
+            }
+          }
+        }
+        patchNext();
+      }, 120);
+    } catch(e) { patchNext(); }
+  }
+  // Start with a slight delay so the panel opens first
+  setTimeout(patchNext, 400);
+}
+
 function renderPresetList() {
   const list = document.getElementById('presetList');
   if (!list) return;
   const presets = loadAllPresets();
+  // Background patch: recalculate totalNum for presets that are missing it
+  patchMissingTotals(presets);
+
   const rawQuery = (document.getElementById('presetSearchInput')?.value || '').trim();
   const query = rawQuery.toLowerCase();
   const codeQuery = rawQuery.replace(/\s/g, '');
@@ -11630,14 +11714,18 @@ function syncPublishedFlags() {
       changed = true;
     }
   });
-  // Clear shortCode/sharedId for presets no longer in preset_links
-  const myLinkCodes = new Set(
-    _sharedPresets.filter(sp => sp.author_id === _sbUser.id).map(sp => sp.short_code)
-  );
+  // Only clear shortCode/sharedId if record is EXPLICITLY found with is_public=false
+  // Do NOT clear if record is simply not in cache yet (Realtime may not have delivered INSERT)
+  const myLinks = _sharedPresets.filter(sp => sp.author_id === _sbUser.id);
+  const myLinkMap = new Map(myLinks.map(sp => [sp.short_code, sp]));
   Object.values(localAll).forEach(p => {
-    if (p.sharedId && !myLinkCodes.has(p.sharedId)) {
-      delete p.publishedAs; delete p.sharedId; delete p.shortCode; changed = true;
+    if (!p.sharedId) return;
+    const sp = myLinkMap.get(p.sharedId);
+    // Only clear if record is found AND is_public=false (explicit retract)
+    if (sp && !sp.is_public) {
+      delete p.publishedAs; changed = true;
     }
+    // If record not found in cache at all — leave flags alone (may be race condition)
   });
   if (changed) { saveAllPresets(localAll); renderPresetList(); }
 }

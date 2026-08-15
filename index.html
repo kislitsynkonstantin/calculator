@@ -2857,6 +2857,11 @@ body.dark .btn-copy-link { background:var(--field-bg);border-color:var(--border)
 
 body.dark #presetBox { background: var(--card-bg); }
 
+/* Чек-лист выключен на боевом домене: прячем все входы разом, чтобы не
+   искать их по одному. Сам раздел остаётся в коде и живёт на тесте. */
+body.no-checklist #checklistBtn,
+body.no-checklist .pcard-cl-circle,
+body.no-checklist #stRowChecklist { display: none !important; }
 </style>
 </head>
 <body>
@@ -4536,6 +4541,7 @@ function init() {
   updateBaseItemNames();
   buildSideNav();
   try { refreshUpdatesDot(); } catch (e) {}
+  document.body.classList.toggle('no-checklist', !window.CHECKLIST_ENABLED);
 }
 
 // ── Sticky header on scroll ──
@@ -9709,6 +9715,7 @@ document.addEventListener('keydown', (e) => {
   }
   // Ы/S — open stats
   if (e.key === 'ч' || e.key === 'Ч' || e.key === 'x' || e.key === 'X') {
+    if (!window.CHECKLIST_ENABLED) return;
     const clOv = document.getElementById('checklistOverlay');
     if (clOv && clOv.style.display !== 'none') { closeChecklist(); } else { openChecklist(); }
     return;
@@ -13337,7 +13344,7 @@ function renderSettingsBody() {
       <div class="st-section-title">Общий режим</div>
       <div class="st-row"><div><div class="st-label">База знаний</div></div><div class="st-kbd-group"><span class="st-kbd">Б</span><span class="st-kbd">,</span></div></div>
       <div class="st-row"><div><div class="st-label">Справка и руководство</div></div><div class="st-kbd-group"><span class="st-kbd">Р</span><span class="st-kbd">H</span></div></div>
-      <div class="st-row"><div><div class="st-label">Чек-лист</div></div><div class="st-kbd-group"><span class="st-kbd">Ч</span><span class="st-kbd">X</span></div></div>
+      <div class="st-row" id="stRowChecklist"><div><div class="st-label">Чек-лист</div></div><div class="st-kbd-group"><span class="st-kbd">Ч</span><span class="st-kbd">X</span></div></div>
       <div class="st-row"><div><div class="st-label">Статистика</div></div><div class="st-kbd-group"><span class="st-kbd">Ы</span><span class="st-kbd">S</span></div></div>
       <div class="st-row"><div><div class="st-label">Пресеты</div></div><div class="st-kbd-group"><span class="st-kbd">М</span><span class="st-kbd">V</span></div></div>
       <div class="st-row"><div><div class="st-label">Версия для печати</div></div><div class="st-kbd-group"><span class="st-kbd">П</span><span class="st-kbd">G</span></div></div>
@@ -15426,6 +15433,7 @@ async function clMigrateLocalToCloud(presetId, shortCode) {
 }
 // ── Open checklist overlay ──
 async function openChecklist(skipDropdown = false) {
+  if (!window.CHECKLIST_ENABLED) return;
   // If a preset is currently active in the main UI, auto-open the checklist for it
   // (skipDropdown=true means caller is already handling preset selection — don't override)
   if (!skipDropdown && !_clActivePresetId && typeof activePresetId !== 'undefined' && activePresetId) {
@@ -21578,6 +21586,10 @@ window.TEST_DOMAIN_ROLES = ['admin', 'editor'];
 // Теперь файл один на оба контура, и выпуск — простое копирование.
 window.IS_TEST_DOMAIN = /^test\./.test(location.hostname);
 
+// Чек-лист пока живёт только на тесте. Флаг, а не вырезание руками: иначе при
+// каждом выпуске пришлось бы вспоминать, что именно надо убрать из боевого файла.
+window.CHECKLIST_ENABLED = window.IS_TEST_DOMAIN;
+
 // Сообщение поверх экрана логина, когда роль не подходит. Отдельной разметки
 // не заводим — переиспользуем поле ошибки формы входа, если оно на месте.
 function showTestAccessDenied() {
@@ -21801,7 +21813,7 @@ window.addEventListener('message', function (e) {
   if (!e.data) return;
   // Справка спрашивает состояние сама — отвечаем, когда она готова слушать.
   if (e.data.type === 'updatesQuery') {
-    try { frame.contentWindow.postMessage({ type: 'updatesState', unseen: updatesUnseen() }, '*'); }
+    try { frame.contentWindow.postMessage({ type: 'updatesState', unseen: updatesUnseen(), checklist: !!window.CHECKLIST_ENABLED }, '*'); }
     catch (err) {}
   }
   if (e.data.type === 'updatesOpened') markUpdatesSeen();
@@ -21818,7 +21830,7 @@ function openManual() {
   setTimeout(function() {
     if (frame.contentWindow) {
       try { frame.contentWindow.postMessage({type:'darkMode', dark: document.body.classList.contains('dark')}, '*'); } catch(e) {}
-      try { frame.contentWindow.postMessage({type:'updatesState', unseen: updatesUnseen()}, '*'); } catch(e) {}
+      try { frame.contentWindow.postMessage({type:'updatesState', unseen: updatesUnseen(), checklist: !!window.CHECKLIST_ENABLED}, '*'); } catch(e) {}
     }
   }, 300);
 }
@@ -24898,20 +24910,29 @@ const _MANUAL_B64 = 'PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9InJ1Ij4KPGhlYWQ+CjxtZXR
   'g9GOINCy0LXRgNGB0LjRjiDQttGD0YDQvdCw0LvQsCDRgdC+0YLRgNGD0LTQvdC40Log0YPQttC1INC+0YLQutGA0YvQstCw0LsuCndpbmRvdy5hZGRFdmVu' +
   'dExpc3RlbmVyKCdtZXNzYWdlJywgZnVuY3Rpb24gKGUpIHsKICBpZiAoIWUuZGF0YSB8fCBlLmRhdGEudHlwZSAhPT0gJ3VwZGF0ZXNTdGF0ZScpIHJldHVy' +
   'bjsKICB2YXIgZCA9IGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCd1cGREb3QnKTsKICBpZiAoZCkgZC5zdHlsZS5kaXNwbGF5ID0gZS5kYXRhLnVuc2VlbiA/' +
-  'ICdibG9jaycgOiAnbm9uZSc7Cn0pOwoKLy8g0KHQv9GA0LDRiNC40LLQsNC10Lwg0YHQvtGB0YLQvtGP0L3QuNC1INGB0LDQvNC4LCDQsCDQvdC1INC20LTR' +
-  'kdC8LCDQv9C+0LrQsCDQv9GA0LjRiNC70ZHRgiDQutCw0LvRjNC60YPQu9GP0YLQvtGAOiDRgdC/0YDQsNCy0LrQsAovLyDQstGB0YLQsNCy0LvRj9C10YLR' +
-  'gdGPINGH0LXRgNC10Lcgc3JjZG9jLCDQuCDRgdC+0L7QsdGJ0LXQvdC40LUsINC+0YLQv9GA0LDQstC70LXQvdC90L7QtSDQtNC+INC/0L7QtNC60LvRjtGH' +
-  '0LXQvdC40Y8g0L7QsdGA0LDQsdC+0YLRh9C40LrQsCwKLy8g0L/QvtGC0LXRgNGP0LvQvtGB0Ywg0LHRiy4KZnVuY3Rpb24gYXNrVXBkYXRlc1N0YXRlKCkg' +
-  'ewogIHRyeSB7IHBhcmVudC5wb3N0TWVzc2FnZSh7IHR5cGU6ICd1cGRhdGVzUXVlcnknIH0sICcqJyk7IH0gY2F0Y2ggKGVycikge30KfQppZiAoZG9jdW1l' +
-  'bnQucmVhZHlTdGF0ZSA9PT0gJ2xvYWRpbmcnKSB7CiAgZG9jdW1lbnQuYWRkRXZlbnRMaXN0ZW5lcignRE9NQ29udGVudExvYWRlZCcsIGFza1VwZGF0ZXNT' +
-  'dGF0ZSk7Cn0gZWxzZSB7CiAgYXNrVXBkYXRlc1N0YXRlKCk7Cn0KCi8vIGdvKCkg0LLRi9C30YvQstCw0LXRgtGB0Y8g0Lgg0LjQtyDQvNC10L3Rjiwg0Lgg' +
-  '0LjQtyDQv9C+0LjRgdC60LAg4oCUINC/0L7RjdGC0L7QvNGDINGB0L3QuNC80LDQtdC8INGC0L7Rh9C60YMg0LLQvdGD0YLRgNC4INC90LXRkSwKLy8g0LAg' +
-  '0L3QtSDQv9C+INC60LvQuNC60YMg0L3QsCDQv9GD0L3QutGCOiDQuNC90LDRh9C1INC/0LXRgNC10YXQvtC0INGH0LXRgNC10Lcg0L/QvtC40YHQuiDRgtC+' +
-  '0YfQutGDINCx0Ysg0L3QtSDQs9Cw0YHQuNC7LgooZnVuY3Rpb24gKCkgewogIHZhciBvcmlnID0gd2luZG93LmdvOwogIHdpbmRvdy5nbyA9IGZ1bmN0aW9u' +
-  'IChpZCkgewogICAgb3JpZy5hcHBseSh0aGlzLCBhcmd1bWVudHMpOwogICAgaWYgKGlkICE9PSAndXBkYXRlcycpIHJldHVybjsKICAgIHZhciBkID0gZG9j' +
-  'dW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3VwZERvdCcpOwogICAgaWYgKGQpIGQuc3R5bGUuZGlzcGxheSA9ICdub25lJzsKICAgIHRyeSB7IHBhcmVudC5wb3N0' +
-  'TWVzc2FnZSh7IHR5cGU6ICd1cGRhdGVzT3BlbmVkJyB9LCAnKicpOyB9IGNhdGNoIChlcnIpIHt9CiAgfTsKfSkoKTsKPC9zY3JpcHQ+CjwvYm9keT4KPC9o' +
-  'dG1sPgo=';
+  'ICdibG9jaycgOiAnbm9uZSc7CiAgLy8g0KDQsNC30LTQtdC7INC/0YDQviDRh9C10Lot0LvQuNGB0YIg0L/RgNGP0YfQtdC8INGC0LDQvCwg0LPQtNC1INGB' +
+  '0LDQvCDRh9C10Lot0LvQuNGB0YIg0LLRi9C60LvRjtGH0LXQvTog0YHQv9GA0LDQstC60LAg0L3QtSDQtNC+0LvQttC90LAKICAvLyDQvtC/0LjRgdGL0LLQ' +
+  'sNGC0Ywg0YLQviwg0YfQtdCz0L4g0LIg0Y3RgtC+0Lwg0LrQsNC70YzQutGD0LvRj9GC0L7RgNC1INC90LXRgi4KICBpZiAoZS5kYXRhLmNoZWNrbGlzdCA9' +
+  'PT0gZmFsc2UpIHsKICAgIC8vINCj0LTQsNC70Y/QtdC8LCDQsCDQvdC1INC/0YDRj9GH0LXQvDog0YHQv9GA0Y/RgtCw0L3QvdGL0Lkg0YDQsNC30LTQtdC7' +
+  'INCy0YHRkSDRgNCw0LLQvdC+INC90LDRiNGR0LvRgdGPINCx0Ysg0L/QvtC40YHQutC+0LwKICAgIC8vINC/0L4g0YHQv9GA0LDQstC60LUg0Lgg0L7RgtC6' +
+  '0YDRi9C70YHRjyDQsdGLINC/0L4g0YHRgdGL0LvQutC1INC40Lcg0YDQtdC30YPQu9GM0YLQsNGC0L7Qsi4KICAgIHZhciBjaCA9IGRvY3VtZW50LmdldEVs' +
+  'ZW1lbnRCeUlkKCdjaC1jaGVja2xpc3QnKTsKICAgIGlmIChjaCkgY2gucmVtb3ZlKCk7CiAgICBkb2N1bWVudC5xdWVyeVNlbGVjdG9yQWxsKCcuc2ItYScp' +
+  'LmZvckVhY2goZnVuY3Rpb24gKGEpIHsKICAgICAgaWYgKGEuZ2V0QXR0cmlidXRlKCdvbmNsaWNrJykgPT09ICJnbygnY2hlY2tsaXN0JykiKSBhLnJlbW92' +
+  'ZSgpOwogICAgfSk7CiAgICBpZiAodHlwZW9mIGJ1aWxkU2VhcmNoSW5kZXggPT09ICdmdW5jdGlvbicpIHsgdHJ5IHsgYnVpbGRTZWFyY2hJbmRleCgpOyB9' +
+  'IGNhdGNoIChlcnIpIHt9IH0KICB9Cn0pOwoKLy8g0KHQv9GA0LDRiNC40LLQsNC10Lwg0YHQvtGB0YLQvtGP0L3QuNC1INGB0LDQvNC4LCDQsCDQvdC1INC2' +
+  '0LTRkdC8LCDQv9C+0LrQsCDQv9GA0LjRiNC70ZHRgiDQutCw0LvRjNC60YPQu9GP0YLQvtGAOiDRgdC/0YDQsNCy0LrQsAovLyDQstGB0YLQsNCy0LvRj9C1' +
+  '0YLRgdGPINGH0LXRgNC10Lcgc3JjZG9jLCDQuCDRgdC+0L7QsdGJ0LXQvdC40LUsINC+0YLQv9GA0LDQstC70LXQvdC90L7QtSDQtNC+INC/0L7QtNC60LvR' +
+  'jtGH0LXQvdC40Y8g0L7QsdGA0LDQsdC+0YLRh9C40LrQsCwKLy8g0L/QvtGC0LXRgNGP0LvQvtGB0Ywg0LHRiy4KZnVuY3Rpb24gYXNrVXBkYXRlc1N0YXRl' +
+  'KCkgewogIHRyeSB7IHBhcmVudC5wb3N0TWVzc2FnZSh7IHR5cGU6ICd1cGRhdGVzUXVlcnknIH0sICcqJyk7IH0gY2F0Y2ggKGVycikge30KfQppZiAoZG9j' +
+  'dW1lbnQucmVhZHlTdGF0ZSA9PT0gJ2xvYWRpbmcnKSB7CiAgZG9jdW1lbnQuYWRkRXZlbnRMaXN0ZW5lcignRE9NQ29udGVudExvYWRlZCcsIGFza1VwZGF0' +
+  'ZXNTdGF0ZSk7Cn0gZWxzZSB7CiAgYXNrVXBkYXRlc1N0YXRlKCk7Cn0KCi8vIGdvKCkg0LLRi9C30YvQstCw0LXRgtGB0Y8g0Lgg0LjQtyDQvNC10L3Rjiwg' +
+  '0Lgg0LjQtyDQv9C+0LjRgdC60LAg4oCUINC/0L7RjdGC0L7QvNGDINGB0L3QuNC80LDQtdC8INGC0L7Rh9C60YMg0LLQvdGD0YLRgNC4INC90LXRkSwKLy8g' +
+  '0LAg0L3QtSDQv9C+INC60LvQuNC60YMg0L3QsCDQv9GD0L3QutGCOiDQuNC90LDRh9C1INC/0LXRgNC10YXQvtC0INGH0LXRgNC10Lcg0L/QvtC40YHQuiDR' +
+  'gtC+0YfQutGDINCx0Ysg0L3QtSDQs9Cw0YHQuNC7LgooZnVuY3Rpb24gKCkgewogIHZhciBvcmlnID0gd2luZG93LmdvOwogIHdpbmRvdy5nbyA9IGZ1bmN0' +
+  'aW9uIChpZCkgewogICAgb3JpZy5hcHBseSh0aGlzLCBhcmd1bWVudHMpOwogICAgaWYgKGlkICE9PSAndXBkYXRlcycpIHJldHVybjsKICAgIHZhciBkID0g' +
+  'ZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3VwZERvdCcpOwogICAgaWYgKGQpIGQuc3R5bGUuZGlzcGxheSA9ICdub25lJzsKICAgIHRyeSB7IHBhcmVudC5w' +
+  'b3N0TWVzc2FnZSh7IHR5cGU6ICd1cGRhdGVzT3BlbmVkJyB9LCAnKicpOyB9IGNhdGNoIChlcnIpIHt9CiAgfTsKfSkoKTsKPC9zY3JpcHQ+CjwvYm9keT4K' +
+  'PC9odG1sPgo=';
 // ── Sync dark mode from iframes ──
 window.addEventListener('message', function(e) {
   if (e.data === 'closeGuide') { closeGuide(); return; }

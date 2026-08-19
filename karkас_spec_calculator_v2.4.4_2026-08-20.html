@@ -1341,6 +1341,7 @@ body.dark .note-item { background: rgba(168,221,224,0.07); color: var(--gray); b
   flex-wrap: wrap;
 }
 .add-opt-form .field { margin-bottom: 0; flex: 1; min-width: 140px; }
+.add-opt-form .field.add-opt-price { max-width: 160px; }
 .add-opt-form .field label { font-size: 0.72rem; }
 .add-opt-form .field input {
   border: 1.5px solid var(--green-pale);
@@ -3449,6 +3450,15 @@ body.ui-blank .page-wrap .field.contract-field > label {
   display: block;
   margin-bottom: 2px;
 }
+/* Цена в форме «Добавить опцию». В «Модерне» подпись стоит над полем, и все
+   160 пикселей достаются числу. В «Бланке» подпись переезжает влево и съедает
+   до 110 пикселей вместе с отступом — на число остаётся полсотни, и шестизначная
+   сумма обрезается слева: «339 000» читается как «39 000». Поле шире ровно в
+   «Бланке», в «Модерне» ширина прежняя. Нижняя граница нужна для телефона:
+   без неё поля делят строку поровну, цене достаётся 78 пикселей, и семизначная
+   сумма упирается в край. С ней строка переносится, и цена получает всю ширину. */
+body.ui-blank .page-wrap .add-opt-form .field.add-opt-price { max-width: 280px; min-width: 230px; }
+
 body.ui-blank .field label { color: var(--bl-ink3); font-weight: 400; }
 body.ui-blank .field input[type=text],
 body.ui-blank .field input[type=number],
@@ -7936,7 +7946,7 @@ function renderOptionSections() {
           <label>Название опции</label>
           <input type="text" id="addName_${sec.key}" placeholder="Название опции">
         </div>
-        <div class="field" style="max-width:160px;">
+        <div class="field add-opt-price">
           <label>Стоимость (₽)</label>
           <input type="text" id="addPrice_${sec.key}" placeholder="0" inputmode="numeric" oninput="fmtInput(this)">
         </div>

@@ -14201,6 +14201,22 @@ function shouldHidePrintSection(secKey, secTotals) {
   return (secTotals[secKey] || 0) <= 0;
 }
 
+// «Синатарова Маргарита Павловна» → «Синатарова М. П.». Свёртка была
+// написана четырьмя одинаковыми копиями внутри шаблонов печати, и все четыре
+// делили строку по одному пробелу: лишний пробел в конце имени давал пустой
+// кусок, а `''[0]` — это undefined, и в документ уходило «undefined.».
+// Так и случилось у пресета 775165 — имя в базе кончалось пробелом.
+// Здесь режем по любому числу пробелов и выбрасываем пустые куски.
+function свернутьФИО(имя) {
+  const части = String(имя == null ? '' : имя).trim().split(/\s+/).filter(Boolean);
+  if (!части.length) return '';
+  return части.map((ч, i) => {
+    if (i === 0) return ч;                 // фамилия целиком
+    if (ч.includes('.')) return ч;         // уже инициал — не трогаем
+    return ч[0] + '.';
+  }).join(' ');
+}
+
 function buildPrintDoc() {
   if (!selectedProject) return;
   const thickLabels = ['100 мм','150 мм','200 мм'];
@@ -14272,7 +14288,9 @@ function buildPrintDoc() {
   const saved = totalAfterKit - discountAmt;
 
   const manager = document.getElementById('managerName').value || '_______________';
-  const client  = document.getElementById('clientName').value  || '_______________';
+  // Пробелы по краям срезаем здесь, а не в каждом шаблоне: имя с хвостовым
+  // пробелом ломало свёртку ФИО и попадало в документ как есть.
+  const client  = (document.getElementById('clientName').value || '').trim() || '_______________';
   const contractNum  = (document.getElementById('contractNumber')?.value || '').trim();
   const contractDateRaw = (document.getElementById('contractDate')?.value || '').trim();
   const contractDateFmt = contractDateRaw
@@ -14586,7 +14604,7 @@ function buildPrintDoc() {
   if (printStyle === 'blank') {
     const blSig = (typeof appSettings !== 'undefined' && appSettings.signatoryName) || 'Баранов Г.Н.';
     const blClient = client !== '_______________'
-      ? client.split(' ').map((w,i) => { if(i===0) return w; if(w.includes('.')) return w; return w[0]+'.'; }).join(' ')
+      ? свернутьФИО(client)
       : 'Фамилия И.О.';
     const blTech  = TECH_NAME[currentTech] || 'Каркас';
     const blThickK = (typeof TECH_THICK_LABEL !== 'undefined' && TECH_THICK_LABEL[currentTech]) || 'Толщина утепления';
@@ -14873,7 +14891,7 @@ function buildPrintDoc() {
   if (printStyle === 'cards') {
     const sigName = (typeof appSettings !== 'undefined' && appSettings.signatoryName) || 'Баранов Г.Н.';
     const clientShort = client !== '_______________'
-      ? client.split(' ').map((w,i) => { if(i===0) return w; if(w.includes('.')) return w; return w[0]+'.'; }).join(' ')
+      ? свернутьФИО(client)
       : 'Фамилия И.О.';
 
     let cardSections = '';
@@ -15031,7 +15049,7 @@ function buildPrintDoc() {
   if (printStyle === 'luxury') {
     const sigName = (typeof appSettings !== 'undefined' && appSettings.signatoryName) || 'Баранов Г.Н.';
     const clientShort = client !== '_______________'
-      ? client.split(' ').map((w,i) => { if(i===0) return w; if(w.includes('.')) return w; return w[0]+'.'; }).join(' ')
+      ? свернутьФИО(client)
       : 'Фамилия И.О.';
     const techLabelLux = TECH_NAME[currentTech] || 'Каркас';
     const roofLabelLux = selectedProject ? (selectedProject[5] === 'двус-ая' ? 'Двускатная' : selectedProject[5] || '—') : '—';
@@ -15344,7 +15362,7 @@ ${(typeof appSettings === 'undefined' || appSettings.showDisclaimer) ? '<div cla
       </div>
       <div style="flex:1;display:flex;align-items:flex-end;gap:16px;">
         <div style="border-bottom:1px solid #000;flex:1;height:28px;"></div>
-        <div style="font-size:10pt;font-weight:bold;white-space:nowrap;padding-bottom:0;">${client !== '_______________' ? client.split(' ').map((w,i) => { if(i===0) return w; if(w.includes('.')) return w; return w[0]+'.'; }).join(' ') : 'Фамилия И.О.'}</div>
+        <div style="font-size:10pt;font-weight:bold;white-space:nowrap;padding-bottom:0;">${client !== '_______________' ? свернутьФИО(client) : 'Фамилия И.О.'}</div>
       </div>
     </div>
 
@@ -18758,7 +18776,7 @@ function ppCopyFallback(text) {
 function printPaymentPlan() {
   const proj = selectedProject ? selectedProject[0] : '—';
   const manager = document.getElementById('managerName') ? document.getElementById('managerName').value || '—' : '—';
-  const client = document.getElementById('clientName') ? document.getElementById('clientName').value || '—' : '—';
+  const client = document.getElementById('clientName') ? ((document.getElementById('clientName').value || '').trim() || '—') : '—';
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <style>
     body{font-family:Arial,sans-serif;font-size:10pt;color:#111;margin:20mm;}
@@ -21087,7 +21105,7 @@ function collectState() {
     tech: currentTech,
     kbAreas: { fasad: kbAreas.fasad, roof: kbAreas.roof },
     manager: document.getElementById('managerName').value || '',
-    client: document.getElementById('clientName').value || '',
+    client: (document.getElementById('clientName').value || '').trim(),
     contractNumber: document.getElementById('contractNumber')?.value || '',
     contractDate: document.getElementById('contractDate')?.value || '',
     discountPct: parseFloat(document.getElementById('discountPctInput').value) || 0,

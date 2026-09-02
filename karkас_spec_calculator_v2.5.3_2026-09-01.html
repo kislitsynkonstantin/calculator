@@ -7738,8 +7738,8 @@ body.ui-blank #confirmDialogOk { background: #c0392b; }
             <input type="text" id="cdContractNumKar" placeholder="00000000-КАР" oninput="onContractDataInput(true)">
           </div>
           <div class="field">
-            <label>№ договора Отделки (О)</label>
-            <input type="text" id="cdContractNumO" placeholder="00000000-О" oninput="onContractDataInput(true)">
+            <label>№ договора Отделки (ОТД)</label>
+            <input type="text" id="cdContractNumO" placeholder="00000000-ОТД" oninput="onContractDataInput(true)">
           </div>
         </div>
       </div>
@@ -14217,6 +14217,33 @@ function свернутьФИО(имя) {
   }).join(' ');
 }
 
+// Номер договора в документе несёт код состава: основной — «-КАР» в каркасе
+// и «-КБ» в клеёном брусе, отделка — «-ОТД» в обеих технологиях. Менеджер
+// вводит в поле только цифры, код дописывает печать по тому, какой состав
+// выбран в «Разделах». Состав не выбран — номер идёт как есть.
+const КОД_ОСНОВНОГО_ПО_ТЕХНОЛОГИИ = { frame: 'КАР', glulam: 'КБ' };
+function кодСоставаПечати() {
+  if (typeof printActiveContractId === 'undefined' || printActiveContractId == null) return '';
+  const c = contractsConfig.find(x => x.id === printActiveContractId);
+  if (!c) return '';
+  // Основной узнаём и по имени: в общем пресете настройки приезжают такими,
+  // какими их записали, — без кода, а иногда и с чужим номером.
+  const основной = c.id === 1 || /основн/i.test(c.name || '');
+  if (основной) {
+    const т = (typeof currentTech !== 'undefined') ? currentTech : 'frame';
+    return КОД_ОСНОВНОГО_ПО_ТЕХНОЛОГИИ[т] || КОД_ОСНОВНОГО_ПО_ТЕХНОЛОГИИ.frame;
+  }
+  if (c.code) return c.code;
+  if (c.id === 2 || /отделк/i.test(c.name || '')) return 'ОТД';
+  return '';
+}
+function номерСКодом(номер) {
+  const код = кодСоставаПечати();
+  if (!номер || !код) return номер;
+  // Номер, уже набранный с кодом руками, не удваиваем.
+  return номер.replace(/\s*[-—]\s*(КАР|КБ|ОТД|О)$/i, '') + '-' + код;
+}
+
 function buildPrintDoc() {
   if (!selectedProject) return;
   const thickLabels = ['100 мм','150 мм','200 мм'];
@@ -14291,7 +14318,7 @@ function buildPrintDoc() {
   // Пробелы по краям срезаем здесь, а не в каждом шаблоне: имя с хвостовым
   // пробелом ломало свёртку ФИО и попадало в документ как есть.
   const client  = (document.getElementById('clientName').value || '').trim() || '_______________';
-  const contractNum  = (document.getElementById('contractNumber')?.value || '').trim();
+  const contractNum  = номерСКодом((document.getElementById('contractNumber')?.value || '').trim());
   const contractDateRaw = (document.getElementById('contractDate')?.value || '').trim();
   const contractDateFmt = contractDateRaw
     ? new Date(contractDateRaw).toLocaleDateString('ru-RU', {day:'2-digit', month:'2-digit', year:'numeric'})
@@ -15764,15 +15791,30 @@ const _origCalc = calc;
 const CONTRACT_COLORS_LIST = ['#eab308','#f97316','#ef4444','#2563a8','#b45309','#be185d','#0891b2','#8b5cf6','#0369a1','#059669'];
 
 let contractsConfig = [
-  { id:1, name:'Основной договор', color:'#16a34a', sections:['foundation','frame','insulation','exterior','windows','roof','paint','extra','engineering'] },
-  { id:2, name:'Отделка',          color:'#eab308', sections:['interior','steam','stove'] },
+  { id:1, name:'Основной договор', code:'КАР', color:'#16a34a', sections:['foundation','frame','insulation','exterior','windows','roof','paint','extra','engineering'] },
+  { id:2, name:'Отделка',          code:'ОТД', color:'#eab308', sections:['interior','steam','stove'] },
 ];
 let contractsNextId = 3;
+
+// Состав без кода — это состав, сохранённый прежней версией: в общих пресетах
+// настройки договоров лежат внутри снимка расчёта и приезжают такими же, как
+// их записали. Поэтому код проставляем не только при чтении из памяти
+// браузера, но и после восстановления расчёта — иначе в публичном пресете
+// номер печатался бы голым.
+function проставитьКодыСоставов() {
+  if (!Array.isArray(contractsConfig)) return;
+  contractsConfig.forEach(c => {
+    if (c.code) return;
+    if (c.id === 1 || /основн/i.test(c.name || '')) c.code = 'КАР';
+    else if (c.id === 2 || /отделк/i.test(c.name || '')) c.code = 'ОТД';
+  });
+}
 
 function loadContractsConfig() {
   try {
     const s = JSON.parse(localStorage.getItem('contractsConfig_v1') || 'null');
     if (s) contractsConfig = s;
+    проставитьКодыСоставов();
   } catch(e) {}
   setTimeout(() => updateSectionContractDots(), 0);
 }
@@ -16512,7 +16554,7 @@ const CD_FIELDS = [
   ['cdPlotAddress',     'Адрес земельного участка',     true,  true],
   ['cdCadastral',       'Кадастровый номер участка',    true,  true],
   ['cdContractNumKar',  '№ Основного договора (КАР)',   true,  false],
-  ['cdContractNumO',    '№ договора Отделки (О)',       false, true],
+  ['cdContractNumO',    '№ договора Отделки (ОТД)',     false, true],
 ];
 
 const CD_LS_KEY = 'banya_calc_contract_data';
@@ -16574,7 +16616,7 @@ function openContractDataModal() {
     const karEl = document.getElementById('cdContractNumKar');
     const oEl = document.getElementById('cdContractNumO');
     if (karEl && !karEl.value) karEl.value = baseNum + '-КАР';
-    if (oEl && !oEl.value) oEl.value = baseNum + '-О';
+    if (oEl && !oEl.value) oEl.value = baseNum + '-ОТД';
   }
   document.getElementById('contractDataOverlay').style.display = 'block';
   updateContractDataModalFooter();
@@ -16691,7 +16733,7 @@ function tryDownloadContract(contract, format) {
 }
 
 function showContractValDialog(contract, missingList) {
-  document.getElementById('cvContractName').textContent = contract === 'kar' ? 'Основной (КАР)' : 'Отделки (О)';
+  document.getElementById('cvContractName').textContent = contract === 'kar' ? 'Основной (КАР)' : 'Отделки (ОТД)';
   const ul = document.getElementById('cvMissingList');
   ul.innerHTML = missingList.map(label => '<li>' + label + '</li>').join('');
   document.getElementById('contractValOverlay').style.display = 'block';
@@ -16724,7 +16766,7 @@ function buildContractPreviewData(contract) {
   const baseNum = (document.getElementById('contractNumber')?.value || '').trim();
   let contractNum = contract === 'kar' ? v('cdContractNumKar') : v('cdContractNumO');
   if (!contractNum && baseNum) {
-    contractNum = baseNum + (contract === 'kar' ? '-КАР' : '-О');
+    contractNum = baseNum + (contract === 'kar' ? '-КАР' : '-ОТД');
   }
 
   // Resolve total — from PP if available, with discount logic
@@ -16829,7 +16871,7 @@ function showContractPreview(contract, format) {
 
   html += '<div class="cp-section-title">Договор</div>';
   html += '<div class="cp-grid">';
-  html += '<div class="lbl">№ договора:</div>' + cell(countEmpty(d.contractNum), '00000000-' + (contract === 'kar' ? 'КАР' : 'О'));
+  html += '<div class="lbl">№ договора:</div>' + cell(countEmpty(d.contractNum), '00000000-' + (contract === 'kar' ? 'КАР' : 'ОТД'));
   html += '<div class="lbl">Дата:</div>' + cell(d.contractDate, '00.00.0000');
   html += '<div class="lbl">Сумма:</div>' + cell(d.totalFmt, '0 ₽');
   html += '<div class="lbl">в т.ч. НДС 5%:</div>' + cell(d.vatFmt, '0 ₽');
@@ -16857,8 +16899,10 @@ function showContractPreview(contract, format) {
   // Filename
   const lastName = (d.clientName.split(/\s+/)[0]) || 'Заказчик';
   const today = new Date().toISOString().slice(0,10);
-  const contractCode = contract === 'kar' ? 'КАР' : 'О';
-  const num = (d.contractNum || '00000000').replace(/-(КАР|О)$/, '');
+  const contractCode = contract === 'kar' ? 'КАР' : 'ОТД';
+  // Хвост снимаем и старый («-О»), и новый: номера, набранные до правки,
+  // иначе попадали бы в имя файла как «5991387-О».
+  const num = (d.contractNum || '00000000').replace(/-(КАР|ОТД|О)$/, '');
   const filename = 'Договор_' + contractCode + '_' + num + '_' + lastName + '_' + today + '.' + format;
   document.getElementById('contractPreviewFilename').innerHTML = 'Файл: <code style="background:var(--green-bg);padding:2px 6px;border-radius:4px;font-size:0.78rem;">' + escapeHtml(filename) + '</code>';
   document.getElementById('contractPreviewDlBtn').textContent = 'Скачать ' + format.toUpperCase();
@@ -19062,8 +19106,8 @@ function ppCmSetColor(cid, color) {
 }
 function ppCmResetToDefaults() {
   contractsConfig = [
-    { id:1, name:'Основной договор',    color:'#16a34a', sections:['foundation','frame','insulation','exterior','windows','roof','paint','extra','engineering'] },
-    { id:2, name:'Договор на отделку',  color:'#eab308', sections:['interior','steam','stove'] },
+    { id:1, name:'Основной договор',    code:'КАР', color:'#16a34a', sections:['foundation','frame','insulation','exterior','windows','roof','paint','extra','engineering'] },
+    { id:2, name:'Договор на отделку',  code:'ОТД', color:'#eab308', sections:['interior','steam','stove'] },
   ];
   // Force payment schedules to reset by clearing cached payments
   contractsConfig.forEach(c => { delete c.payments; });
@@ -21595,6 +21639,7 @@ function restoreState(state) {
       sections: c.sections ? [...c.sections] : []
     }));
     contractsNextId = Math.max(...contractsConfig.map(c => c.id), 2) + 1;
+    проставитьКодыСоставов();
     saveContractsConfig();
   }
   if (state.ppState && typeof state.ppState === 'object') {

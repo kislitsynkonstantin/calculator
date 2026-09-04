@@ -14394,7 +14394,19 @@ function updatePrintSectionsBar() {
 function togglePrintSection(key, checked, focusKey) {
   if (checked) printActiveSections.add(key);
   else printActiveSections.delete(key);
-  printActiveContractId = null;
+  // Снятая галочка внутри выбранного состава сам состав не отменяет: менеджер
+  // печатает тот же договор, просто без одного раздела, и код в номере
+  // («-КАР», «-ОТД») должен остаться. До 04.09.2026 любое касание галочки
+  // сбрасывало состав, и приписка молча пропадала из номера.
+  // Состав слетает только когда набор перестал быть его частью: в него попал
+  // чужой раздел или не осталось ни одного своего.
+  if (printActiveContractId != null) {
+    const c = contractsConfig.find(x => x.id === printActiveContractId);
+    const свои = new Set(c ? c.sections : []);
+    const чужой = [...printActiveSections].some(k => !свои.has(k));
+    const своихНет = ![...printActiveSections].some(k => свои.has(k));
+    if (!c || чужой || своихНет) printActiveContractId = null;
+  }
   renderPrintSectionChecklist();
   buildPrintDoc();
   updatePrintSectionsBar();

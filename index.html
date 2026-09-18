@@ -24959,7 +24959,10 @@ async function открытьПоУведомлению(ид) {
   showToast('Ищем расчёт…');
   try {
     const { data, error } = await _sb.from('presets')
-      .select('id,name,state,updated_at').eq('id', ид).eq('user_id', _sbUser.id).limit(1);
+      // Удалённый пресет из облака не достаём: сообщение о пропаже честнее,
+      // чем воскрешённый расчёт.
+      .select('id,name,state,updated_at').eq('id', ид).eq('user_id', _sbUser.id)
+      .is('deleted_at', null).limit(1);
     if (error) throw error;
     const п = data && data[0];
     if (!п || !п.state) { showToast('Расчёт по этой ссылке не найден — возможно, пресет удалён'); return; }
@@ -28671,7 +28674,9 @@ async function sbSavePreset(preset) {
       user_id: _sbUser.id,
       name: preset.name,
       state: stateVal,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      // Сохранили пресет с тем же ид — он снова живой, метка удаления снимается.
+      deleted_at: null
     }, { onConflict: 'id' });
     if (error) console.warn('[sbSavePreset error]', preset.id, error.message);
     // If preset is published — also update preset_links with granular fields so shared version stays in sync
@@ -28696,7 +28701,12 @@ async function sbSavePreset(preset) {
 async function sbDeletePreset(id) {
   if (!_sbUser) return;
   try {
-    await _sb.from('presets').delete().eq('id', id).eq('user_id', _sbUser.id);
+    // Строка не стирается, а помечается удалённой: стёртую другой браузер,
+    // у которого пресет ещё лежит в своём хранилище, заливает обратно.
+    const { error } = await _sb.from('presets')
+      .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', id).eq('user_id', _sbUser.id);
+    if (error) console.warn('[sbDeletePreset]', error.message);
   } catch(e) { console.warn('Supabase delete failed:', e); }
 }
 
@@ -29549,12 +29559,18 @@ async function sbSyncPresets(silent = false) {
     }
     // Step 2: fetch presets
     const { data: cloudPresets, error } = await withTimeout(
-      _sb.from('presets').select('id,name,state,updated_at').eq('user_id', _sbUser.id),
+      _sb.from('presets').select('id,name,state,updated_at,deleted_at').eq('user_id', _sbUser.id),
       15000, 'fetch presets');
     if (error) { console.warn('[Sync] presets error:', error.message); throw error; }
     const local = loadAllPresets();
     const merged = { ...local };
+    // Удалённые в облаке убираются и здесь — и в облако обратно не уезжают.
+    // Без этого удаление не переживало синхронизации: другой браузер держал
+    // пресет у себя и заливал его назад (Константин, 18.09.2026).
+    const удалённые = new Set((cloudPresets || []).filter(cp => cp.deleted_at).map(cp => cp.id));
+    удалённые.forEach(ид => { delete merged[ид]; });
     (cloudPresets || []).forEach(cp => {
+      if (cp.deleted_at) return;
       const localP = local[cp.id];
       if (!localP || new Date(cp.updated_at) >= new Date(localP.state?.savedAt || 0)) {
         // Собственные поля карточки — звезда, код публикации, признак «опубликован» —
@@ -29567,7 +29583,8 @@ async function sbSyncPresets(silent = false) {
     });
     saveAllPresets(merged);
     const cloudIds = new Set((cloudPresets || []).map(p => p.id));
-    const toUpload = Object.values(local).filter(p => !cloudIds.has(p.id));
+    const toUpload = Object.values(local)
+      .filter(p => !cloudIds.has(p.id) && !удалённые.has(p.id));
     await Promise.allSettled(toUpload.map(p => withTimeout(sbSavePreset(p), 8000, 'save preset ' + p.id)));
     renderPresetList();
     localStorage.setItem('sb_last_sync', new Date().toISOString());

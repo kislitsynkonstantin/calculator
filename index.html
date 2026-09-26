@@ -12046,6 +12046,7 @@ function выбратьПорядокПроектов(событие, код) {
 
 function populateProjectSelect(filter = '') {
   const prevName = selectedProject ? selectedProject[0] : '';
+  const prevProject = selectedProject;
   const keywords = (filter || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
   // customProjects — набор активной технологии, поэтому проверять её здесь
   // больше не нужно: ручные проекты бруса в список каркаса не попадут.
@@ -12147,7 +12148,10 @@ function populateProjectSelect(filter = '') {
 
   // Restore selection if still in list
   if (prevName) {
-    const match = filteredProjects.find(p => p[0] === prevName);
+    // Тот же проект, а не первый с тем же названием: свой проект из аккаунта
+    // и проект из списка бывают тёзками, и выбор по имени подменял один другим.
+    const match = filteredProjects.includes(prevProject) ? prevProject
+      : filteredProjects.find(p => p[0] === prevName);
     if (match) {
       selectedProject = match;
       label.textContent = match[0] + (customProjects.includes(match) ? ' ★' : '');
@@ -27029,8 +27033,10 @@ function collectState() {
     if (arr && arr.length) custNotes[sec] = arr.map(n => ({...n}));
   });
 
-  // Custom projects
-  const custProjects = customProjects.map(p => ({
+  // Custom projects. Тень базового проекта — копия проекта из списка, которую
+  // когда-то восстановили «из архива», — в снимок не пишется: иначе каждый
+  // пресет разносил бы её дальше (см. теньБазового).
+  const custProjects = customProjects.filter(p => !теньБазового(p)).map(p => ({
     data: [...p],
     matrixOv: matrixOverrides.has(p) ? {...matrixOverrides.get(p)} : {}
   }));
@@ -27158,6 +27164,12 @@ function collectState() {
 }
 
 // ── Restore calculator state from snapshot ──
+// Тень базового проекта: копия проекта из списка, заведённая не пользователем
+// (у своих проектов есть _cloudId), а восстановлением старого снимка.
+function теньБазового(п) {
+  return !!(п && !п._cloudId && PROJECTS.some(b => b[0] === п[0]));
+}
+
 function restoreState(state) {
   if (!state || state.version !== 1) {
     showToast('Неверный формат пресета');
@@ -27190,9 +27202,18 @@ function restoreState(state) {
     setThickness(state.thickness);
   }
 
+  // Тени базовых проектов, попавшие в память раньше, снимаются: проект из
+  // списка должен выбираться сам, а не своей копией.
+  for (let i = customProjects.length - 1; i >= 0; i--) {
+    if (теньБазового(customProjects[i])) customProjects.splice(i, 1);
+  }
   // Restore custom projects first
   if (state.customProjects && state.customProjects.length) {
     state.customProjects.forEach(cp => {
+      // Проект, который есть в списке проектов, не заводится своим: в старых
+      // снимках лежат такие копии, и из них в списке появлялся двойник со
+      // звездой, а у названия — значок папки (Константин, 26.09.2026).
+      if (!cp || !cp.data || PROJECTS.some(b => b[0] === cp.data[0])) return;
       // Check if already exists in customProjects by name
       const exists = customProjects.find(p => p[0] === cp.data[0]);
       if (!exists) {
@@ -27217,10 +27238,11 @@ function restoreState(state) {
   // Restore selected project
   if (state.project) {
     const pname = state.project.name;
-    // Prefer customProjects match (already has matrixOv applied above)
-    let found = customProjects.find(p => p[0] === pname);
-    // Fall back to base PROJECTS
-    if (!found) found = PROJECTS.find(p => p[0] === pname);
+    // Свой проект из аккаунта — первым (у него свои цены опций), затем проект
+    // из списка, и только потом копия из снимка.
+    let found = customProjects.find(p => p[0] === pname && p._cloudId)
+      || PROJECTS.find(p => p[0] === pname)
+      || customProjects.find(p => p[0] === pname);
 
     if (!found) {
       // Project not in base — restore as archive custom project
@@ -27513,8 +27535,9 @@ function restoreState(state) {
     const label = document.getElementById('projectSelectLabel');
     const wrap = document.getElementById('projectSelectWrap');
     const star = customProjects.includes(selectedProject) ? ' ★' : '';
-    const archived = selectedProject._archived ? ' 📁' : '';
-    if (label) { label.textContent = selectedProject[0] + star + archived; label.style.color = ''; }
+    // Значка папки у архивного проекта нет: эмодзи в интерфейсе не ставим, а
+    // о восстановлении из архива уже сказало сообщение.
+    if (label) { label.textContent = selectedProject[0] + star; label.style.color = ''; }
     if (wrap) wrap.classList.remove('has-matches');
   }
 

@@ -25794,7 +25794,7 @@ function selectTech(val) {
   }
   const код = (val === 'glulam' || val === 'Клеёный брус') ? 'glulam' : 'frame';
   if (код === 'glulam' && typeof glulamAllowed === 'function' && !glulamAllowed()) {
-    try { showToast('Клеёный брус пока доступен администратору и редактору'); } catch (e) {}
+    try { showToast('Клеёный брус для этой учётной записи пока закрыт'); } catch (e) {}
     return;
   }
   if (код === currentTech) { applyTechChrome(); calc(); return; }
@@ -25808,7 +25808,7 @@ async function switchTech(код) {
   // Заслон стоит здесь, а не только на пункте списка: технологию переключает
   // и восстановление сохранённого расчёта, и ссылка для клиента.
   if (код === 'glulam' && typeof glulamAllowed === 'function' && !glulamAllowed()) {
-    try { showToast('Клеёный брус пока доступен администратору и редактору'); } catch (e) {}
+    try { showToast('Клеёный брус для этой учётной записи пока закрыт'); } catch (e) {}
     return false;
   }
   const _былаТех = currentTech, _итогДоТех = al2ИтогДо();
@@ -27167,7 +27167,17 @@ function restoreState(state) {
   // по ним состояние — иначе опции чужой технологии просто не найдутся.
   const техСнимка = state.tech || 'frame';
   if (техСнимка !== currentTech) {
-    switchTech(техСнимка).then(() => { if (currentTech === техСнимка) restoreState(state); });
+    // Смена технологии снимает активный пресет — она начинает расчёт заново.
+    // Но здесь технологию меняет сам открываемый пресет, и снятый активный
+    // возвращается: иначе каркасный пресет, открытый из бруса, раскладывался
+    // целиком, а точки у «Пресетов» не было и правки в него не шли
+    // (Константин, 26.09.2026).
+    const активный = activePresetId;
+    switchTech(техСнимка).then(() => {
+      if (currentTech !== техСнимка) return;
+      if (активный && !activePresetId) { try { setActivePreset(активный); } catch (e) {} }
+      restoreState(state);
+    });
     return;
   }
   clearAppliedKit();

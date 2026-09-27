@@ -9838,6 +9838,13 @@ body.ui-blank #confirmDialogOk { background: #c0392b; }
      холсте позже, поэтому до их готовности они скрыты (правило при
      :root[data-tone]), а не показаны бирюзовыми. */
   var tone = s.tone;
+  // По умолчанию — «Зелёный-графит»; бирюза, записанная сама, без выбора,
+  // переезжает на него один раз — то же правило, что migrateToneToBmsk().
+  // Пустой или снятый тон — тоже умолчание: applyTone() поставит его позже, и
+  // без этого первый кадр шёл бы бирюзой.
+  var палитры = (window.ТОНЫ_ПАЛИТРЫ && ТОНЫ_ПАЛИТРЫ.сдвиг) || {};
+  if (!s.toneMigratedToBmsk && tone === 'teal') tone = 'bmsk';
+  if (tone !== 'teal' && палитры[tone] === undefined) tone = 'bmsk';
   if (tone && tone !== 'teal' && window.ТОНЫ_ПАЛИТРЫ &&
       (ТОНЫ_ПАЛИТРЫ.сдвиг || {})[tone] !== undefined) {
     document.documentElement.dataset.tone = tone;
@@ -21512,10 +21519,11 @@ loadContractsConfig();
 
 const appSettings = {
   themeMode: 'auto',
-  // Цвет оформления: 'teal' — бирюзовый, основной; 'blue' — синий. Настройка
-  // аккаунта: выбор встречает на любом устройстве (Константин 24.09.2026:
-  // «переключатель конечно в настройках, по умолчанию также стоит бирюза»).
-  tone: 'teal',
+  // Цвет оформления — настройка аккаунта: выбор встречает на любом устройстве.
+  // По умолчанию «Зелёный-графит» — цвет компании (Константин, 27.09.2026:
+  // «по умолчанию поставь цветовую тему „Зелёный-графит“»); прежде стояла бирюза.
+  tone: 'bmsk',
+  toneMigratedToBmsk: false,
   hideZeroSections: false,
   showPricePerM2: true,
   showTotalStrip: true,
@@ -21672,6 +21680,7 @@ function loadSettings() {
   // и сохранится уже в аккаунт. Здесь он нужен на случай, когда профиля не
   // будет вовсе: иначе человек так и остался бы в «Модерне».
   try { migrateUiStyleToBlank(); } catch (e) {}
+  try { migrateToneToBmsk(); } catch (e) {}
   document.getElementById('discountPctInput').value = appSettings.defaultDiscount;
   отметитьГлавноеПолеСкидки();
   syncNoteColor();
@@ -22170,7 +22179,7 @@ function превьюТона() {
 }
 
 function applyTone(tone, save = true) {
-  appSettings.tone = ТОНЫ_ПОДПИСИ[tone] ? tone : 'teal';
+  appSettings.tone = ТОНЫ_ПОДПИСИ[tone] ? tone : 'bmsk';
   const тон = текущийТон();
   if (тон) document.documentElement.dataset.tone = тон;
   else delete document.documentElement.dataset.tone;
@@ -22228,6 +22237,23 @@ function migrateUiStyleToBlank(ужеПереехал) {
   appSettings.uiStyleMigratedToBlank = true;
   // applyUiStyle с save=false: сохраняем один раз, вместе с отметкой.
   if (appSettings.uiStyle !== 'blank') applyUiStyle('blank', false);
+  saveSettings();
+  return true;
+}
+
+// ── Однократный перевод на «Зелёный-графит» ────────────────────────────────
+// Бирюза стояла по умолчанию и записывалась в настройки сама, без выбора: на
+// 27.09.2026 цвет в аккаунте выбрал только администратор, у менеджеров его
+// там нет вовсе, а в браузере лежит бирюза из прежнего умолчания. Поэтому
+// бирюзу и пустое значение переводим на «Зелёный-графит» один раз; отметка
+// уезжает в аккаунт, и выбранную потом бирюзу больше не трогаем. Аргумент —
+// по той же причине, что у migrateUiStyleToBlank: на пути профиля отметку
+// берём из профиля, а не из памяти.
+function migrateToneToBmsk(ужеПереехал) {
+  const переехал = (ужеПереехал === undefined) ? appSettings.toneMigratedToBmsk : ужеПереехал;
+  if (переехал) { appSettings.toneMigratedToBmsk = true; return false; }
+  appSettings.toneMigratedToBmsk = true;
+  if (!appSettings.tone || appSettings.tone === 'teal') applyTone('bmsk', false);
   saveSettings();
   return true;
 }
@@ -40244,6 +40270,7 @@ async function loadSbProfile() {
       // Основной путь переезда: настройки из профиля только что перезаписали
       // местные, поэтому отметку смотрим по аккаунту, а не по памяти.
       try { migrateUiStyleToBlank(!!data.app_settings.uiStyleMigratedToBlank); } catch (e) {}
+      try { migrateToneToBmsk(!!data.app_settings.toneMigratedToBmsk); } catch (e) {}
       syncNoteColor();
       // Приехавшее с профилем применяем сразу: звёзды общих расчётов, рубеж
       // прочитанных уведомлений, частота синхронизации.

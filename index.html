@@ -6277,6 +6277,12 @@ body.ui-blank .opt-qty-btn {
   body.ui-blank .opt-qty-btn:hover { border-color: var(--bl-acc2); color: var(--bl-acc); }
 }
 body.ui-blank .opt-qty-val { color: var(--bl-ink); font-weight: 500; }
+/* Счётчик в строке редактора комплектаций: список плотный, мелким кеглем, и
+   квадраты 30 px карточки спецификации раздували строку и спорили с названием.
+   Рисуется 22 px, а нажимается полем вокруг кнопки. */
+.ked-qty .opt-qty-btn, body.ui-blank .ked-qty .opt-qty-btn { width: 22px; height: 22px; position: relative; font-size: 0.85rem; }
+.ked-qty .opt-qty-btn::before { content: ''; position: absolute; inset: -6px -3px; }
+.ked-qty .opt-qty-val { font-size: 0.72rem; min-width: 16px; text-align: center; }
 
 /* ── Боковая панель: оглавление документа ─────────────────────────────────
    В «Модерне» это белая коробка со скруглением по обеим сторонам, тенью и
@@ -14676,25 +14682,36 @@ function единицаПриЧисле(число, формы) {
   return формы[2];
 }
 
+// Имя поштучной опции при количестве: «(3 шт.)», «за 3 двери», «… 20 м²».
+// Одно правило для карточки спецификации и для комплектаций.
+function имяПоКоличеству(исходное, qty, qtyUnit) {
+  const формы = ЕДИНИЦЫ_КОЛИЧЕСТВА[qtyUnit || 'шт.'] || ЕДИНИЦЫ_КОЛИЧЕСТВА['шт.'];
+  const единица = единицаПриЧисле(qty, формы);
+  // «…, за 1 дверь» — цена на карточке за всё количество, поэтому число
+  // меняется и здесь: «за 3 двери».
+  // Площадь в конце имени без скобок — «…террасы 12 м²».
+  return /\(\s*\d+\s*[^)]*\)\s*$/.test(исходное)
+    ? исходное.replace(/\(\s*\d+\s*[^)]*\)\s*$/, '(' + qty + ' ' + единица + ')')
+    : /\d+\s*м²\s*$/.test(исходное)
+      ? исходное.replace(/\d+\s*м²\s*$/, qty + ' ' + единица)
+      : исходное.replace(/(за\s+)\d+\s+\S+\s*$/, '$1' + qty + ' ' + единица);
+}
+// Имя строки комплектации с её количеством; у неотмеченной — исходное.
+function имяВКомплекте(ключ, optId, исходное) {
+  const о = getOpt(optId);
+  if (!о || !о.formula || !о.formula.qtyOption) return исходное;
+  return имяПоКоличеству(исходное, количествоВКомплекте(ключ, о), о.formula.qtyUnit);
+}
+
 // Update "(N шт.)" in a quantity-based option's name
 function refreshQtyName(optId) {
   const opt = getOpt(optId);
   if (!opt || !opt.formula?.qtyOption) return;
   if (!opt._origName) opt._origName = opt.name;
   const qty = getOptQty(opt);
-  const формы = ЕДИНИЦЫ_КОЛИЧЕСТВА[opt.formula.qtyUnit || 'шт.']
-             || ЕДИНИЦЫ_КОЛИЧЕСТВА['шт.'];
   // Заменяется последняя скобка с числом: «(1 шт.)», «(1 месяц)». Целимся
   // в конец имени, чтобы не задеть скобку вроде «(D108/L2500)» в середине.
-  const единица = единицаПриЧисле(qty, формы);
-  // «…, за 1 дверь» — цена на карточке за всё количество, поэтому число
-  // меняется и здесь: «за 3 двери».
-  // Площадь в конце имени без скобок — «…террасы 12 м²».
-  const newName = /\(\s*\d+\s*[^)]*\)\s*$/.test(opt._origName)
-    ? opt._origName.replace(/\(\s*\d+\s*[^)]*\)\s*$/, '(' + qty + ' ' + единица + ')')
-    : /\d+\s*м²\s*$/.test(opt._origName)
-      ? opt._origName.replace(/\d+\s*м²\s*$/, qty + ' ' + единица)
-      : opt._origName.replace(/(за\s+)\d+\s+\S+\s*$/, '$1' + qty + ' ' + единица);
+  const newName = имяПоКоличеству(opt._origName, qty, opt.formula.qtyUnit);
   opt.name = newName;
   задатьИмяСтроки(document.querySelector(`#lbl_${optId} .opt-name`), newName);
 }
@@ -38474,7 +38491,9 @@ const KOMPL_ROWS = (function(){
     .map((o, idx) => ({
       sec: o.section,
       type: o.included ? 'base' : 'extra',
-      name: o.name,
+      // Поштучная опция меняет имя с количеством («за 3 двери»); комплектации
+      // хранятся по имени, поэтому берётся исходное.
+      name: o._origName || o.name,
       optId: o.id,
       _ord: idx,
       presets: { econom:false, standart:false, comfort:false }
@@ -38526,7 +38545,9 @@ function rebuildKomplRows() {
     .map((o, idx) => ({
       sec: o.section,
       type: o.included ? 'base' : 'extra',
-      name: o.name,
+      // Поштучная опция меняет имя с количеством («за 3 двери»); комплектации
+      // хранятся по имени, поэтому берётся исходное.
+      name: o._origName || o.name,
       optId: o.id,
       _ord: idx,
       presets: { econom:false, standart:false, comfort:false }
@@ -38555,7 +38576,7 @@ async function loadKitsFromSupabase(slug) {
   try {
     const { data, error } = await _sb
       .from('project_kits')
-      .select('name, option_ids, custom_items, base_off')
+      .select('name, option_ids, custom_items, base_off, option_qty')
       .eq('project_key', slug);
     if (error) { return null; }
     // Пустой ответ означает «у проекта комплектаций нет», а не «не дозвонились»:
@@ -38567,6 +38588,7 @@ async function loadKitsFromSupabase(slug) {
       econom: new Set(), standart: new Set(), comfort: new Set(), premium: new Set(),
       _custom: { econom: [], standart: [], comfort: [], premium: [] },
       _baseOff: { econom: new Set(), standart: new Set(), comfort: new Set(), premium: new Set() },
+      _qty: { econom: {}, standart: {}, comfort: {}, premium: {} },
     };
     // Match by name lowercase. Handles BOTH legacy names (Эконом/Стандарт/Комфорт+)
     // and new names (Тёплый контур/Стандарт/Комфорт/Премиум) — variant A keeps keys.
@@ -38597,6 +38619,7 @@ async function loadKitsFromSupabase(slug) {
             checked: it.checked !== false, // default true if absent
           }));
       }
+      if (row.option_qty && typeof row.option_qty === 'object') result._qty[target] = чистыеКоличества(row.option_qty);
       if (Array.isArray(row.base_off)) {
         row.base_off.forEach(id => {
           const name = KOMPL_ID_TO_NAME[id];
@@ -38612,7 +38635,7 @@ async function loadKitsFromSupabase(slug) {
 
 // Save one kit to Supabase. Returns true on success, false on failure.
 // Upsert by (project_key, name) — uses delete + insert since there's no unique constraint yet.
-async function saveKitToSupabase(slug, kitName, namesSet, customItems, baseOffSet) {
+async function saveKitToSupabase(slug, kitName, namesSet, customItems, baseOffSet, qtyMap) {
   if (!slug || !_sb) return false;
   try {
     // Convert names -> ids via KOMPL_OPT_MAP. Names not found are skipped (with warning).
@@ -38647,12 +38670,16 @@ async function saveKitToSupabase(slug, kitName, namesSet, customItems, baseOffSe
     // Delete existing row(s) for this project+name, then insert fresh
     await _sb.from('project_kits')
       .delete().eq('project_key', slug).eq('name', kitName);
+    // Количество — только у опций, что в комплектации есть.
+    const qtyClean = {};
+    Object.keys(чистыеКоличества(qtyMap)).forEach(id => { if (ids.includes(id)) qtyClean[id] = чистыеКоличества(qtyMap)[id]; });
     const { error } = await _sb.from('project_kits').insert({
       project_key: slug,
       name: kitName,
       option_ids: ids,
       custom_items: customClean,
       base_off: baseOffIds,
+      option_qty: qtyClean,
       updated_at: new Date().toISOString(),
       updated_by: userId,
       updated_by_name: userName,
@@ -38683,7 +38710,7 @@ async function saveAllKitsForCurrentProject() {
         .filter(ci => ci.kitChecked && ci.kitChecked[key] === true)
         .map(ci => ({ id: ci.id, name: ci.name, price: ci.price, section: ci.section, checked: true,
                       check: ci.проверить === true, src: ci.источник || '' }));
-      const ок = await saveKitToSupabase(slug, labels[key], KOMPL_CONFIGS[key], kitItems, KOMPL_BASE_OFF[key]);
+      const ок = await saveKitToSupabase(slug, labels[key], KOMPL_CONFIGS[key], kitItems, KOMPL_BASE_OFF[key], KOMPL_QTY[key]);
       // В сводку идёт только записанное: не легло в базу — в журнале его нет.
       if (ок && подход) {
         const вИд = набор => [...(набор || [])].map(н => KOMPL_OPT_MAP[н]).filter(Boolean);
@@ -38823,6 +38850,7 @@ async function loadKitsForCurrentProject() {
     kitKeys().forEach(k => {
       if (KOMPL_CONFIGS[k]) KOMPL_CONFIGS[k].clear(); else KOMPL_CONFIGS[k] = new Set();
       if (KOMPL_BASE_OFF[k]) KOMPL_BASE_OFF[k].clear(); else KOMPL_BASE_OFF[k] = new Set();
+      KOMPL_QTY[k] = {}; сохранитьКоличестваКомплекта(k);
       KOMPL_CUSTOM.forEach(ci => { if (ci.kitChecked) ci.kitChecked[k] = false; });
       saveKomplConfigToStorage(k);
       saveKomplBaseOffToStorage(k);
@@ -38842,6 +38870,7 @@ async function loadKitsForCurrentProject() {
       saveKomplBaseOffToStorage(k);
     });
   }
+  kitKeys().forEach(k => { KOMPL_QTY[k] = (fromDb._qty && fromDb._qty[k]) || {}; сохранитьКоличестваКомплекта(k); });
   if (fromDb._custom) {
     // Merge per-kit custom_items from DB into shared KOMPL_CUSTOM list
     const merged = {};
@@ -38935,6 +38964,52 @@ function kitTint(key) {
 }
 // Helper: ordered list of kit keys (drop-in for the hardcoded kitKeys()).
 function kitKeys() { return KITS.map(k => k.key); }
+
+// Количество поштучных опций и площадь в комплектации — по id опции, у каждого
+// уровня своё: {econom: {w15: 2, r23: 3}, …}. Нет ключа — количество по
+// умолчанию (одна дверь, один колпак, 12 м² террасы). Константин 05.10.2026:
+// «в комплектациях сделай тоже возможность выбора количества, там где это
+// предусмотрено… все опции проверь, где ручной выбор есть количества или площади».
+// По id, а не по имени: имя поштучной опции меняется с количеством («за 3 двери»).
+let KOMPL_QTY = Object.fromEntries(['econom', 'standart', 'comfort', 'premium'].map(к => [к, загрузитьКоличестваКомплекта(к)]));
+function загрузитьКоличестваКомплекта(к) {
+  try { const с = JSON.parse(localStorage.getItem('kompl_qty_v1_' + к)); if (с && typeof с === 'object' && !Array.isArray(с)) return чистыеКоличества(с); } catch (e) {}
+  return {};
+}
+function сохранитьКоличестваКомплекта(к) {
+  try { localStorage.setItem('kompl_qty_v1_' + к, JSON.stringify(KOMPL_QTY[к] || {})); } catch (e) {}
+}
+function чистыеКоличества(о) {
+  const итог = {};
+  Object.keys(о || {}).forEach(ид => { const н = parseInt(о[ид], 10); if (н > 0 && н < 10000) итог[ид] = н; });
+  return итог;
+}
+function количествоВКомплекте(ключ, опц) {
+  const н = (KOMPL_QTY[ключ] || {})[опц.id];
+  return н > 0 ? н : ((опц.formula && опц.formula.defaultQty) || 1);
+}
+// Количества комплекта на время расчёта: цена поштучной опции берётся из
+// formulaOverrides (getOptQty), поэтому цена комплектации без этого шла бы по
+// количеству, открытому сейчас в спецификации, а не по самой комплектации.
+function сКоличествамиКомплекта(ключ, дело) {
+  const было = {};
+  OPTIONS.forEach(о => {
+    if (!о.formula || !о.formula.qtyOption) return;
+    было[о.id] = formulaOverrides[о.id] ? Object.assign({}, formulaOverrides[о.id]) : undefined;
+    задатьКоличествоОпции(о, количествоВКомплекте(ключ, о));
+  });
+  try { return дело(); }
+  finally { Object.keys(было).forEach(ид => { if (было[ид] === undefined) delete formulaOverrides[ид]; else formulaOverrides[ид] = было[ид]; }); }
+}
+// Количество в спецификации — так же, как его ставит счётчик: по умолчанию —
+// без записи, иначе в formulaOverrides[id].area.
+function задатьКоличествоОпции(о, н) {
+  if (н === ((о.formula && о.formula.defaultQty) || 1)) {
+    if (formulaOverrides[о.id]) { delete formulaOverrides[о.id].area; if (!Object.keys(formulaOverrides[о.id]).length) delete formulaOverrides[о.id]; }
+  } else {
+    formulaOverrides[о.id] = Object.assign({}, formulaOverrides[о.id] || {}, { area: н });
+  }
+}
 
 let KOMPL_CONFIGS = {
   econom:   loadKomplConfig('econom'),
@@ -39340,6 +39415,9 @@ function closeKompl() {
 // ── Price calculation ──
 
 function calcKomplPrice(preset) {
+  return сКоличествамиКомплекта(preset, () => calcKomplPriceТело(preset));
+}
+function calcKomplPriceТело(preset) {
   if (!selectedProject) return null;
   const basePrice = selectedProject[1 + currentThickness];
   if (!basePrice) return null;
@@ -40076,7 +40154,7 @@ function renderKomplTable() {
           ${kitKeys().map(k => `<td style="text-align:center;padding:7px 7px;${colBg(k)}">${(KOMPL_BASE_OFF[k] && KOMPL_BASE_OFF[k].has(row.name)) ? NO() : YESk(k)}</td>`).join('')}</tr>`;
       } else {
         html += `<tr class="kompl-row" style="border-bottom:1px solid var(--border);"><td style="padding:7px 8px 7px 12px;font-size:0.74rem;color:var(--black);line-height:1.35;">${row.name}</td>
-          ${kitKeys().map(k => `<td style="text-align:center;padding:7px 7px;${colBg(k)}">${KOMPL_CONFIGS[k] && KOMPL_CONFIGS[k].has(row.name) ? YESk(k) : NO()}</td>`).join('')}</tr>`;
+          ${kitKeys().map(k => `<td style="text-align:center;padding:7px 7px;${colBg(k)}">${KOMPL_CONFIGS[k] && KOMPL_CONFIGS[k].has(row.name) ? YESk(k) + количествоВЯчейке(k, row.optId) : NO()}</td>`).join('')}</tr>`;
       }
     });
     groups.forEach(g => { html += renderGroupRows(g); });
@@ -40137,6 +40215,16 @@ let _appliedKitName = null;       // name of the kit we're tracking (persists wh
 let _appliedKitSnapshot = null;   // { checked: {id:bool}, custom: [{section,name,price}] }
 
 // Build a normalized snapshot of the current calculator composition (paid options + customs).
+// Количество в ячейке таблицы комплектаций — только когда оно не по умолчанию.
+function количествоВЯчейке(ключ, optId) {
+  const о = getOpt(optId);
+  if (!о || !о.formula || !о.formula.qtyOption) return '';
+  const н = количествоВКомплекте(ключ, о);
+  if (н === (о.formula.defaultQty || 1)) return '';
+  const формы = ЕДИНИЦЫ_КОЛИЧЕСТВА[о.formula.qtyUnit || 'шт.'] || ЕДИНИЦЫ_КОЛИЧЕСТВА['шт.'];
+  return `<div class="kompl-qty" style="font-size:0.62rem;color:var(--gray);white-space:nowrap;margin-top:2px;">${н} ${единицаПриЧисле(н, формы)}</div>`;
+}
+
 function _komplStateSnapshot() {
   const checked = {};
   OPTIONS.forEach(o => { if (!o.included) checked[o.id] = !!checkedOptions[o.id]; });
@@ -40149,7 +40237,10 @@ function _komplStateSnapshot() {
     });
   });
   custom.sort((a, b) => (a.section + a.name).localeCompare(b.section + b.name));
-  return { checked, custom };
+  // Количество поштучных: поменяли после применения — это уже не комплектация.
+  const qty = {};
+  OPTIONS.forEach(o => { if (o.formula && o.formula.qtyOption && checkedOptions[o.id]) qty[o.id] = getOptQty(o); });
+  return { checked, custom, qty };
 }
 
 function _komplSnapshotsEqual(a, b) {
@@ -40162,6 +40253,11 @@ function _komplSnapshotsEqual(a, b) {
   for (let i = 0; i < a.custom.length; i++) {
     const x = a.custom[i], y = b.custom[i];
     if (x.section !== y.section || x.name !== y.name || x.price !== y.price) return false;
+  }
+  // Снимки из пресетов до 05.10.2026 количества не знают — сравниваем, только когда оно есть у обоих.
+  if (a.qty && b.qty) {
+    const ключи = new Set([...Object.keys(a.qty), ...Object.keys(b.qty)]);
+    for (const id of ключи) { if (a.qty[id] !== b.qty[id]) return false; }
   }
   return true;
 }
@@ -40330,6 +40426,17 @@ async function applyKompl() {
       }
     });
   }
+  // Количество поштучных — из комплектации; у остальных — по умолчанию.
+  OPTIONS.forEach(o => {
+    if (!o.formula || !o.formula.qtyOption) return;
+    задатьКоличествоОпции(o, количествоВКомплекте(preset, o));
+    const н = getOptQty(o);
+    const поле = document.getElementById('qtyval_' + o.id);
+    if (поле) { if (поле.tagName === 'INPUT') { поле.value = н; поле.style.setProperty('--n', String(н).length); } else поле.textContent = н; }
+    try { refreshQtyName(o.id); } catch (e) {}
+    const цена = document.getElementById('optprice_' + o.id);
+    if (цена) { const ц = getOptPrice(o); цена.textContent = ц ? fmt(ц) : '—'; }
+  });
   const names = Object.fromEntries(KITS.map(k => [k.key, k.name]));
   _appliedKitName = names[preset];
   _appliedKitSnapshot = _komplStateSnapshot();
@@ -40807,9 +40914,9 @@ function renderKedList() {
   const priceById = {}; // id -> price (or 0 if not priceable)
   const optByName = {}; // name -> option object (for getOptPrice access by KOMPL_ROWS row)
   try {
-    OPTIONS.forEach(o => { optByName[o.name] = o; priceById[o.id] = (function(){
+    сКоличествамиКомплекта(komplKedTab, () => OPTIONS.forEach(o => { optByName[o.name] = o; priceById[o.id] = (function(){
       try { const p = effectiveOptPrice(o); return (typeof p === 'number' && isFinite(p)) ? p : 0; } catch(_) { return 0; }
-    })(); });
+    })(); }));
   } catch(_) {}
   const secSubtotal = {}; // sec -> sum of selected option prices in that section
   KOMPL_ROWS.forEach(row => {
@@ -40885,7 +40992,7 @@ function renderKedList() {
       <div style="width:15px;height:15px;border-radius:3px;border:1.5px solid ${isChecked?'var(--green-dark)':' var(--border)'};background:${isChecked?'var(--green-dark)':' transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.1s;">
         ${isChecked ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
       </div>
-      <span style="font-size:0.72rem;color:var(--black);flex:1;line-height:1.35;">${baseBadge}${row.name}</span>${priceHtml}
+      <span style="font-size:0.72rem;color:var(--black);flex:1;line-height:1.35;">${baseBadge}${!isBaseRow && isChecked ? имяВКомплекте(komplKedTab, row.optId, row.name) : row.name}</span>${!isBaseRow && isChecked ? счётчикКомплектаHtml(row.optId) : ''}${priceHtml}
     </div>`;
   });
   // Append manual items for the last section
@@ -40948,7 +41055,7 @@ function renderKedList() {
         : `<span style="font-size:0.66rem;color:#cc0000;font-weight:600;white-space:nowrap;margin-left:4px;">0 \u20bd</span>`;
       rh += `<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 12px;font-size:0.69rem;color:var(--black);line-height:1.3;">
         <span style="width:5px;height:5px;border-radius:50%;background:${_kitDotColor};flex-shrink:0;margin-top:4px;"></span>
-        <span style="flex:1;">${row.name}</span>${itemPriceHtml}
+        <span style="flex:1;">${имяВКомплекте(komplKedTab, row.optId, row.name)}</span>${itemPriceHtml}
         <button onclick="kedToggleIdx(${rowIdx2})" style="background:none;border:none;cursor:pointer;color:var(--border);font-size:0.85rem;padding:0 2px;line-height:1;flex-shrink:0;" onmouseover="this.style.color='#e05555'" onmouseout="this.style.color='var(--border)'">\u00d7</button>
       </div>`;
     });
@@ -40995,10 +41102,52 @@ function kedToggleIdx(idx) {
   if (row) kedToggle(row.name);
 }
 
+// Счётчик количества в строке редактора — у отмеченной поштучной опции, тот же
+// вид, что на карточке спецификации. Нажатие на счётчик строку не переключает.
+function счётчикКомплектаHtml(optId) {
+  const о = getOpt(optId);
+  if (!о || !о.formula || !о.formula.qtyOption) return '';
+  const н = количествоВКомплекте(komplKedTab, о);
+  const значение = о.formula.ввод
+    ? `<input type="text" class="opt-qty-val opt-qty-in" id="kedqty_${optId}" value="${н}" style="--n:${String(н).length}" inputmode="numeric" maxlength="3"
+        aria-label="${escapeHtml(о.formula.qtyUnit || 'Количество')}" onclick="event.stopPropagation()" onfocus="this.select()"
+        onkeydown="event.stopPropagation(); if (event.key === 'Enter') this.blur();" onchange="kedЗадатьКоличество('${optId}', this.value)">`
+    : `<span class="opt-qty-val" id="kedqty_${optId}">${н}</span>`;
+  return `<span class="opt-qty-stepper ked-qty" style="margin-left:8px;flex-shrink:0;" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
+      <button type="button" class="opt-qty-btn" title="Меньше" aria-label="Меньше" onclick="kedИзменитьКоличество('${optId}',-1,event)">−</button>
+      ${значение}${о.formula.ввод ? '<label class="opt-qty-unit" for="kedqty_' + optId + '">' + escapeHtml(о.formula.qtyUnit || '') + '</label>' : ''}
+      <button type="button" class="opt-qty-btn" title="Больше" aria-label="Больше" onclick="kedИзменитьКоличество('${optId}',1,event)">+</button>
+    </span>`;
+}
+function kedИзменитьКоличество(optId, шаг, event) {
+  if (event) event.stopPropagation();
+  const о = getOpt(optId);
+  if (!о || !о.formula || !о.formula.qtyOption) return;
+  kedЗадатьКоличество(optId, количествоВКомплекте(komplKedTab, о) + шаг);
+}
+function kedЗадатьКоличество(optId, значение) {
+  const о = getOpt(optId);
+  if (!о || !о.formula || !о.formula.qtyOption) return;
+  const макс = о.formula.макс || 99;
+  let н = parseInt(String(значение).replace(/\D/g, ''), 10);
+  if (!н) { renderKedList(); return; }
+  н = Math.max(1, Math.min(макс, н));
+  const карта = KOMPL_QTY[komplKedTab] || (KOMPL_QTY[komplKedTab] = {});
+  if (н === ((о.formula.defaultQty) || 1)) delete карта[optId]; else карта[optId] = н;
+  сохранитьКоличестваКомплекта(komplKedTab);
+  renderKedList();
+  renderKomplTable();
+  try { updateKomplPrices(); } catch (e) {}
+  autoSaveKompl();
+}
+
 function kedToggle(name) {
   const set = KOMPL_CONFIGS[komplKedTab];
   if (set.has(name)) {
     set.delete(name);
+    // Опции нет в комплектации — нет и её количества.
+    const снятая = KOMPL_OPT_MAP[name];
+    if (снятая && KOMPL_QTY[komplKedTab] && KOMPL_QTY[komplKedTab][снятая]) { delete KOMPL_QTY[komplKedTab][снятая]; сохранитьКоличестваКомплекта(komplKedTab); }
     // Mirror calculator un-block: removing a trigger restores the base options it
     // excluded, provided NO other option currently in the kit still excludes them.
     releaseKedExclusions(name);

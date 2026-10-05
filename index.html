@@ -16238,24 +16238,22 @@ const MUTUAL_EXCLUSIONS = [
   { triggers: ['p17'], excludes: ['p13','p14','p15','p16'], blockMessage: 'Заблокированы остальные виды покраски' },
 
   // ── Дровяные печи: radio-style ────────────────────────────
-  { triggers: ['st16'], excludes: ['st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25', 'st34'] },
-  { triggers: ['st17'], excludes: ['st16', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25', 'st34'] },
-  { triggers: ['st18'], excludes: ['st16', 'st17', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25', 'st34'] },
-  { triggers: ['st19'], excludes: ['st16', 'st17', 'st18', 'st21', 'st22', 'st23', 'st24', 'st25', 'st34'] },
-  { triggers: ['st21'], excludes: ['st16', 'st17', 'st18', 'st19', 'st22', 'st23', 'st24', 'st25', 'st34'] },
-  { triggers: ['st22'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st23', 'st24', 'st25', 'st34'] },
-  { triggers: ['st23'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st24', 'st25', 'st34'] },
-  { triggers: ['st24'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st25', 'st34'] },
-  { triggers: ['st25'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st34'] },
-  // Печь Изистим Ялта в камне — дровяная (Константин, 05.10.2026: «добавь эту опцию с такой ценой»).
-  { triggers: ['st34'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25'] },
+  { triggers: ['st16'], excludes: ['st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25'] },
+  { triggers: ['st17'], excludes: ['st16', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25'] },
+  { triggers: ['st18'], excludes: ['st16', 'st17', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25'] },
+  { triggers: ['st19'], excludes: ['st16', 'st17', 'st18', 'st21', 'st22', 'st23', 'st24', 'st25'] },
+  { triggers: ['st21'], excludes: ['st16', 'st17', 'st18', 'st19', 'st22', 'st23', 'st24', 'st25'] },
+  { triggers: ['st22'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st23', 'st24', 'st25'] },
+  { triggers: ['st23'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st24', 'st25'] },
+  { triggers: ['st24'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st25'] },
+  { triggers: ['st25'], excludes: ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24'] },
   // ── Дровяная печь закрывает электрические ─────────────────
   // Константин 24.09.2026: «если выбрана дровяная печь, то блокируются для
   // выбора эти 2 электрические» — угловая Harvia Glow и подвесная Sawo Cumulus.
   // Третья электрическая, Sawo с выносным пультом, закрыта тем же правилом:
   // две печи в одной парной не ставятся независимо от модели. Отмеченная
   // электрическая снимается сама, как и прочие закрытые опции.
-  { triggers: ['st16','st17','st18','st19','st21','st22','st23','st24','st25','st34'],
+  { triggers: ['st16','st17','st18','st19','st21','st22','st23','st24','st25'],
     excludes: ['st3','st4','st5'] },
   // ── Парное: липа блокирует осину + radio между липой ──────
   { triggers: ['s12','s13','s14','s15'], excludes: ['s2','s4'] },
@@ -16272,7 +16270,7 @@ const MUTUAL_EXCLUSIONS = [
 const AUTO_INCLUDES = [
   {
     // Any wood-burning stove → mandatory kit auto-checked
-    triggers: ['st16','st17','st18','st19','st21','st22','st23','st24','st25','st34'],
+    triggers: ['st16','st17','st18','st19','st21','st22','st23','st24','st25'],
     includes: ['st1','st6','st15','st12','st20']
   }
 ];
@@ -16920,7 +16918,7 @@ function toggleOpt(optId) {
   const isAutoTrigger = AUTO_INCLUDES.some(r => r.triggers.includes(optId));
   if (isAutoTrigger) applyAutoIncludes();
   // Wood stove unchecked → show unblock toast
-  const WOOD_STOVE_IDS = ['st16','st17','st18','st19','st21','st22','st23','st24','st25','st34'];
+  const WOOD_STOVE_IDS = ['st16','st17','st18','st19','st21','st22','st23','st24','st25'];
   if (WOOD_STOVE_IDS.includes(optId) && wasChecked && !chk.checked) {
     const autoRemoved = [];
     AUTO_INCLUDES.forEach(rule => {
@@ -16948,7 +16946,7 @@ function toggleOpt(optId) {
 }
 
 function showAutoIncludeToast(triggerId) {
-  const WOOD_STOVE_IDS = ['st16','st17','st18','st19','st21','st22','st23','st24','st25','st34'];
+  const WOOD_STOVE_IDS = ['st16','st17','st18','st19','st21','st22','st23','st24','st25'];
   AUTO_INCLUDES.forEach(rule => {
     if (!rule.triggers.includes(triggerId)) return;
     const names = rule.includes.map(id => {
@@ -35924,7 +35922,7 @@ function проверкаПоЧекЛисту() {
   if (премиум >= 3 && !есть('s34') && !найти(/сборк\S*\s+премиальн/i)) добавить('steam', 'Добавить сборку премиальной парной', false, строка('s34'));
 
   // Печь: модель, кассеты и пароиспаритель у Ферингера, одна облицовка.
-  const дрова = ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25', 'st34'];
+  const дрова = ['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24', 'st25'];
   if (хоть(['st1', 'st2']) && !хоть(дрова) && !своиВРазделе('stove')) добавить('stove', 'Указать модель печи', false, перваяИз(дрова));
   const ферингер = хоть(['st16', 'st17', 'st18', 'st19', 'st21', 'st22', 'st23', 'st24']);
   if (ферингер) {
@@ -35934,7 +35932,7 @@ function проверкаПоЧекЛисту() {
     else if (!кассет) добавить('stove', 'Печь Ферингер без кассет, добавить', false, перваяИз(['st29', 'st30']));
     else if (!пиф) добавить('stove', 'Печь Ферингер без пароиспарителя ПИФ, добавить', false, перваяИз(['st31', 's30']));
   }
-  const печьКамень = хоть(['st21', 'st22', 'st23', 'st24', 'st34']);
+  const печьКамень = хоть(['st21', 'st22', 'st23', 'st24']);
   const печьМеталл = хоть(['st16', 'st17', 'st18', 'st19', 'st25']);
   const порталКамень = хоть(['st32', 'st33']);
   if (печьМеталл && порталКамень) добавить('stove', 'Печь в металле, портал в камне — привести к одной облицовке', false, отмеченнаяИз(['st32', 'st33']));
